@@ -120,20 +120,36 @@ Deux réglages allaient dans le même sens et ont été corrigés :
 Sans le dossier `model/`, le bot démarre quand même et affiche
 `Ecoute desactivee - modele absent` ; tout le reste fonctionne.
 
-### Ne jamais appeler `KaldiRecognizer.Reset()`
+### Vosk n'est pas thread-safe, et deux threads l'appellent
 
-Après une détection, remettre le recognizer à zéro paraît propre. En réalité
-`Reset()` refait un parcours du treillis, qui n'a pas de token final juste après
-un `Result()`, et Vosk part en assertion C++ :
+Symptôme : le bot répond correctement, puis le process est tué net.
 
 ```
 WARNING (VoskAPI:BestPathEnd()) No final token found.
 ASSERTION_FAILED (VoskAPI:TraceBackBestPath()) Assertion failed
 ```
 
-Ce n'est pas une exception Python : le process est tué net, `try/except` ne peut
-rien. `AcceptWaveform()` clôt déjà l'énoncé et en ouvre un nouveau tout seul —
-`Reset()` est inutile en plus d'être dangereux.
+Ce n'est pas une exception Python — c'est une assertion C++, `try/except` ne peut
+rien intercepter.
+
+La cause est une course entre deux threads. `SilenceGeneratorSink` n'est pas un
+simple filtre : il lance **son propre thread** (`SilenceGenerator(threading.Thread)`)
+qui appelle `write()` pour injecter du silence, pendant que le thread de routage
+des paquets appelle `write()` avec l'audio réel. Les deux touchaient le même
+`KaldiRecognizer`, qui ne supporte pas ça : le treillis de décodage se corrompt,
+`Result()` ne trouve plus de token final, et Vosk abandonne le process.
+
+Un `threading.Lock` autour de l'analyse règle le problème. Vérifié en rejouant la
+course dans un sous-processus, huit passages, deux threads :
+
+| verrou | résultat |
+|---|---|
+| désactivé | process tué, code de sortie 3 |
+| actif | survit, 0 exception |
+
+Une explication antérieure accusait `KaldiRecognizer.Reset()`. Le retirer était
+juste — `AcceptWaveform()` clôt déjà l'énoncé, `Reset()` était inutile — mais ce
+n'était pas la cause : le crash revient sans lui. Le vrai coupable est la course.
 
 ### Le rustine DAVE (chiffrement de bout en bout)
 

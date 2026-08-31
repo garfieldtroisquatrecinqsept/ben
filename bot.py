@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -154,6 +155,7 @@ class WakeWordSink(_SinkBase):
         self.recognizers: dict[int, object] = {}
         self.resample_states: dict[int, object] = {}
         self.dernier_declenchement = 0.0
+        self.verrou = threading.Lock()
 
     def wants_opus(self) -> bool:
         return False
@@ -161,7 +163,11 @@ class WakeWordSink(_SinkBase):
     def write(self, user, data) -> None:
         if user is None or user.bot or not sounds or not data.pcm:
             return
-        mono = audioop.tomono(data.pcm, 2, 0.5, 0.5)
+        with self.verrou:
+            self._analyser(user, data.pcm)
+
+    def _analyser(self, user, pcm) -> None:
+        mono = audioop.tomono(pcm, 2, 0.5, 0.5)
         converted, self.resample_states[user.id] = audioop.ratecv(
             mono, 2, 1, 48000, 16000, self.resample_states.get(user.id)
         )
@@ -189,8 +195,9 @@ class WakeWordSink(_SinkBase):
         asyncio.run_coroutine_threadsafe(play_random(self.vc, "ecoute"), self.loop)
 
     def cleanup(self) -> None:
-        self.recognizers.clear()
-        self.resample_states.clear()
+        with self.verrou:
+            self.recognizers.clear()
+            self.resample_states.clear()
 
 
 def start_ecoute(vc):
