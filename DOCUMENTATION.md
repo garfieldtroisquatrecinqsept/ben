@@ -13,7 +13,8 @@ Ses commandes ne laissent aucune trace dans le salon texte.
 | `bot.py` | le bot |
 | `model/` | modèle de reconnaissance vocale (optionnel, voir *Écoute*) |
 | `diag_vocal.py` | diagnostic de la réception vocale, si l'écoute ne marche plus |
-| `run_bot.bat` | double-clic pour lancer |
+| `run_bot.bat` | double-clic pour lancer sous Windows |
+| `start.sh` | lancement sur un hébergeur Linux, avec diagnostic |
 
 ## Lancer
 
@@ -185,6 +186,45 @@ C'est du monkeypatch sur `PacketDecoder._decode_packet` : à surveiller lors d'u
 mise à jour de `discord-ext-voice-recv`, qui finira par gérer DAVE nativement.
 En cas de casse, `ECOUTE=false` désactive toute la réception et le bot retombe sur
 un client vocal standard, ambiance et commandes intactes.
+
+## Héberger sur bot-hosting.net (ou tout panel Pterodactyl)
+
+Le dépôt ne suffit pas tel quel : `model/` est exclu par `.gitignore` (41 Mo) et
+l'environnement Linux n'a pas forcément de quoi faire du son. `start.sh` s'occupe
+de tout et affiche un diagnostic avant de lancer le bot.
+
+**Réglages du panel**
+
+| Champ | Valeur |
+|---|---|
+| Startup command | `bash start.sh` |
+| Install / commande d'installation | `pip install -r requirements.txt` |
+| Variables | `DISCORD_TOKEN`, `GUILD_ID`, et les autres réglages au besoin |
+
+Pas de fichier `.env` à créer : les variables définies dans le panel sont lues
+directement par `os.getenv`. Le `.env` local reste prioritaire s'il existe, mais
+il n'est pas dans le dépôt — et ne doit jamais y être.
+
+**Ce que `start.sh` vérifie au démarrage**, dans cet ordre :
+
+- la version de Python. `audioop`, utilisé pour convertir l'audio, est intégré
+  jusqu'à Python 3.12 ; à partir de 3.13 il vient du paquet `audioop-lts`, déjà
+  tiré par les dépendances. Les deux cas fonctionnent.
+- **ffmpeg** — sans lui, aucun son n'est joué. Beaucoup d'images Python ne
+  l'embarquent pas : si le diagnostic affiche `ABSENT`, il faut changer d'image
+  dans le panel, aucun contournement côté code.
+- **libopus** — `discord.py` ne fournit la librairie que pour Windows. Sous Linux
+  elle doit venir du système (`libopus.so.0`). Absente, le bot se connecte au
+  vocal mais ne peut rien encoder.
+- le **modèle Vosk**, téléchargé et installé automatiquement s'il manque. Avec
+  `ECOUTE=false`, cette étape est sautée.
+
+**Ce qui risque de coincer sur une offre gratuite**
+
+La reconnaissance vocale décode 50 trames par seconde et par personne qui parle,
+et le modèle occupe environ 200 Mo de RAM une fois chargé. C'est la partie
+coûteuse du bot. Si le conteneur est trop juste, mets `ECOUTE=false` : le bot
+garde l'ambiance, les commandes et les réponses écrites, et redevient très léger.
 
 ## Redécouper le MP3
 
