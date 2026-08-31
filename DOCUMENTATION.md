@@ -14,7 +14,8 @@ Ses commandes ne laissent aucune trace dans le salon texte.
 | `model/` | modèle de reconnaissance vocale (optionnel, voir *Écoute*) |
 | `diag_vocal.py` | diagnostic de la réception vocale, si l'écoute ne marche plus |
 | `run_bot.bat` | double-clic pour lancer sous Windows |
-| `start.sh` | lancement sur un hébergeur Linux, avec diagnostic |
+| `main.py` | point d'entrée des hébergeurs type Pterodactyl (diagnostic + modèle) |
+| `start.sh` | même rôle en bash, pour un VPS ou un hôte qui laisse choisir |
 
 ## Lancer
 
@@ -189,42 +190,47 @@ un client vocal standard, ambiance et commandes intactes.
 
 ## Héberger sur bot-hosting.net (ou tout panel Pterodactyl)
 
-Le dépôt ne suffit pas tel quel : `model/` est exclu par `.gitignore` (41 Mo) et
-l'environnement Linux n'a pas forcément de quoi faire du son. `start.sh` s'occupe
-de tout et affiche un diagnostic avant de lancer le bot.
+La commande de démarrage du panel est figée :
 
-**Réglages du panel**
+```
+pip install -r requirements.txt && exec python3 -u ${STARTUP_FILE}
+```
+
+Elle n'exécute qu'un fichier **Python**, donc `start.sh` y est inutilisable.
+`main.py` est le point d'entrée pour ces hébergeurs : il fait le diagnostic,
+télécharge le modèle Vosk si besoin, puis lance le bot. Comme `main.py` est aussi
+la valeur par défaut de `STARTUP_FILE`, il n'y a rien à changer dans le panel.
 
 | Champ | Valeur |
 |---|---|
-| Startup command | `bash start.sh` |
-| Install / commande d'installation | `pip install -r requirements.txt` |
-| Variables | `DISCORD_TOKEN`, `GUILD_ID`, et les autres réglages au besoin |
+| Git Repo Address | `https://github.com/garfieldtroisquatrecinqsept/ben.git` |
+| Branch | `main` |
+| STARTUP_FILE | `main.py` (valeur par défaut, rien à toucher) |
+| Variables | `DISCORD_TOKEN`, `GUILD_ID`, `MESSAGES`… |
 
-Pas de fichier `.env` à créer : les variables définies dans le panel sont lues
-directement par `os.getenv`. Le `.env` local reste prioritaire s'il existe, mais
-il n'est pas dans le dépôt — et ne doit jamais y être.
+Pas de fichier `.env` à créer : les variables du panel sont lues directement par
+`os.getenv`. Le `.env` local reste prioritaire s'il existe, mais il n'est pas dans
+le dépôt — et ne doit jamais y être.
 
-**Ce que `start.sh` vérifie au démarrage**, dans cet ordre :
+`start.sh` reste dans le dépôt pour les hébergeurs qui laissent choisir la
+commande de démarrage, et pour un VPS.
 
-- la version de Python. `audioop`, utilisé pour convertir l'audio, est intégré
-  jusqu'à Python 3.12 ; à partir de 3.13 il vient du paquet `audioop-lts`, déjà
-  tiré par les dépendances. Les deux cas fonctionnent.
-- **ffmpeg** — sans lui, aucun son n'est joué. Beaucoup d'images Python ne
-  l'embarquent pas : si le diagnostic affiche `ABSENT`, il faut changer d'image
-  dans le panel, aucun contournement côté code.
-- **libopus** — `discord.py` ne fournit la librairie que pour Windows. Sous Linux
-  elle doit venir du système (`libopus.so.0`). Absente, le bot se connecte au
-  vocal mais ne peut rien encoder.
-- le **modèle Vosk**, téléchargé et installé automatiquement s'il manque. Avec
-  `ECOUTE=false`, cette étape est sautée.
+**Vérifié sur bot-hosting.net (image Python 3.14, Linux x86_64)** : toutes les
+dépendances s'installent, roues Linux comprises — `vosk`, `davey` (`cp314`),
+`PyNaCl`, et `audioop-lts` qui remplace le module `audioop` retiré de Python 3.13.
 
-**Ce qui risque de coincer sur une offre gratuite**
+**Ce qui peut encore manquer dans l'image**, et que le diagnostic affiche :
 
-La reconnaissance vocale décode 50 trames par seconde et par personne qui parle,
-et le modèle occupe environ 200 Mo de RAM une fois chargé. C'est la partie
-coûteuse du bot. Si le conteneur est trop juste, mets `ECOUTE=false` : le bot
-garde l'ambiance, les commandes et les réponses écrites, et redevient très léger.
+- **ffmpeg** — sans lui, aucun son n'est joué. Aucun contournement côté code, il
+  faut une autre image.
+- **libopus** — `discord.py` ne la fournit que pour Windows ; sous Linux elle doit
+  venir du système. Absente, le bot rejoint le vocal mais n'encode rien.
+
+**Ressources.** Le modèle occupe 66 Mo sur le disque et environ 200 Mo de RAM une
+fois chargé, et la reconnaissance décode 50 trames par seconde et par personne qui
+parle. C'est la partie coûteuse. Si le conteneur est trop juste, mets
+`ECOUTE=false` : le téléchargement est sauté, et le bot garde l'ambiance, les
+commandes et les réponses écrites pour presque rien.
 
 ## Redécouper le MP3
 
