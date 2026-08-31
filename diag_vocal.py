@@ -1,14 +1,3 @@
-"""Diagnostic de la reception vocale.
-
-Rejoint le salon vocal ou tu te trouves, ecoute 60 secondes, puis affiche un
-rapport : quels messages le serveur vocal envoie, si le bot arrive a associer un
-flux audio a un utilisateur, et si le dechiffrement de bout en bout fonctionne.
-
-    .venv\\Scripts\\python.exe -X utf8 diag_vocal.py
-
-Parle pendant l'ecoute, sinon il n'y aura rien a analyser.
-"""
-
 import asyncio
 import collections
 import os
@@ -29,7 +18,6 @@ erreurs: list[str] = []
 
 
 def instrumenter_gateway():
-    """Note chaque message du websocket vocal avant que voice_recv le traite."""
     from discord.ext.voice_recv import gateway as vr_gateway
 
     hook_original = vr_gateway.hook
@@ -47,7 +35,6 @@ def instrumenter_gateway():
 
 
 def instrumenter_decodeur():
-    """Note, paquet par paquet, si l'utilisateur est identifie et le dechiffrement passe."""
     import davey
     from discord.ext.voice_recv import opus as vr_opus
 

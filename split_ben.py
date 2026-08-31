@@ -1,12 +1,3 @@
-"""Decoupe un MP3 en clips individuels via la detection de silence de ffmpeg.
-
-Usage :
-    python split_ben.py                      # utilise les reglages par defaut
-    python split_ben.py --noise -45 --gap 0.4 --min-dur 0.15
-Les clips sont ecrits dans sounds/ sous la forme ben_01.mp3, ben_02.mp3, ...
-Renomme-les ensuite comme tu veux : le bot lit le nom du fichier comme nom du son.
-"""
-
 import argparse
 import re
 import shutil
@@ -30,7 +21,6 @@ def duration_of(src: Path) -> float:
 
 
 def detect_segments(src: Path, noise_db: float, gap: float, min_dur: float, pad: float):
-    """Retourne une liste de (start, end) des passages non silencieux, fusionnes."""
     total = duration_of(src)
     proc = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(src),
                 "-af", f"silencedetect=noise={noise_db}dB:d=0.15", "-f", "null", "-"])

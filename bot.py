@@ -1,13 +1,3 @@
-"""Bot Discord qui rejoint un salon vocal et fait des bruits de Talking Ben.
-
-Deux facons de le declencher :
-  - l'ambiance : un bruit au hasard toutes les 5 a 10 minutes (reglable)
-  - l'ecoute : quelqu'un dit "Ben" dans le vocal, Ben repond
-
-Les sons sont lus depuis sounds/*.mp3 : le nom du fichier est le nom du son.
-Le bot ne repond jamais par un message visible dans le salon texte.
-"""
-
 import asyncio
 import audioop
 import json
@@ -81,12 +71,11 @@ def load_sounds() -> int:
 
 
 def get_vosk_model():
-    """Retourne le modele de reconnaissance, ou None s'il n'est pas installe."""
     global _vosk_model, _vosk_erreur
     if _vosk_model is not None or _vosk_erreur is not None:
         return _vosk_model
     if not MODEL_DIR.is_dir():
-        _vosk_erreur = f"modele absent : {MODEL_DIR} (voir README, section Ecoute)"
+        _vosk_erreur = f"modele absent : {MODEL_DIR} (voir DOCUMENTATION.md)"
         print(f"Ecoute desactivee - {_vosk_erreur}")
         return None
     try:
@@ -102,7 +91,6 @@ def get_vosk_model():
 
 
 async def play_sound(vc: discord.VoiceClient, path: Path):
-    """Joue un fichier et attend la fin. Coupe ce qui est en cours."""
     if vc.is_playing():
         vc.stop()
     done = asyncio.Event()
@@ -156,11 +144,6 @@ except ImportError:
 
 
 class WakeWordSink(_SinkBase):
-    """Transcrit ce que disent les humains et reveille Ben sur le mot cle.
-
-    Discord envoie du PCM 48 kHz stereo, Vosk veut du 16 kHz mono : on convertit
-    par utilisateur, chacun ayant son propre etat de reechantillonnage.
-    """
 
     def __init__(self, vc: discord.VoiceClient, model, loop: asyncio.AbstractEventLoop):
         if _SinkBase is not object:
@@ -211,7 +194,6 @@ class WakeWordSink(_SinkBase):
 
 
 def start_ecoute(vc):
-    """Branche la reconnaissance vocale si le client et le modele le permettent."""
     if not ECOUTE or not hasattr(vc, "listen"):
         return False
     model = get_vosk_model()
@@ -233,17 +215,6 @@ _dave_erreurs = 0
 
 
 def patch_dave_receive() -> bool:
-    """Apprend a voice_recv a lire l'audio chiffre de bout en bout (DAVE).
-
-    Discord chiffre l'audio de bout en bout et voice_recv ignore complètement
-    cette couche : il dechiffre le transport puis passe a Opus des octets encore
-    chiffres, d'ou "OpusError: corrupted stream" et la mort du thread de lecture.
-
-    Se declarer incompatible avec DAVE (max_dave_protocol_version = 0) n'est pas
-    une echappatoire : le serveur ferme alors la connexion avec le code 4017.
-    On intercale donc le dechiffrement de la session DAVE — que discord.py tient
-    deja a jour de son cote — juste avant le decodage Opus.
-    """
     global _dave_patch
     if _dave_patch:
         return True
@@ -295,7 +266,6 @@ def patch_dave_receive() -> bool:
 
 
 def voice_client_class():
-    """VoiceRecvClient si l'ecoute est possible, sinon le client standard."""
     if ECOUTE:
         try:
             from discord.ext import voice_recv
@@ -308,10 +278,6 @@ def voice_client_class():
 
 
 async def ensure_voice(interaction: discord.Interaction) -> discord.VoiceClient | None:
-    """Connecte le bot au salon de l'utilisateur, ou le deplace s'il est ailleurs.
-
-    Toute connexion demarre l'ambiance et l'ecoute : c'est le comportement par defaut.
-    """
     user = interaction.user
     if not isinstance(user, discord.Member) or user.voice is None or user.voice.channel is None:
         await reply(interaction, "Faut etre dans un salon vocal d'abord.")
@@ -329,7 +295,6 @@ async def ensure_voice(interaction: discord.Interaction) -> discord.VoiceClient 
 
 
 async def reply(interaction: discord.Interaction, message: str):
-    """Repond en ephemere : personne d'autre que l'auteur ne voit quoi que ce soit."""
     if interaction.response.is_done():
         await interaction.followup.send(message, ephemeral=True)
     else:
@@ -337,7 +302,6 @@ async def reply(interaction: discord.Interaction, message: str):
 
 
 async def silent_ack(interaction: discord.Interaction):
-    """Accuse reception sans rien laisser dans le salon."""
     await interaction.response.defer(ephemeral=True)
     try:
         await interaction.delete_original_response()
@@ -449,7 +413,6 @@ async def reload(interaction: discord.Interaction):
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    """Quitte le vocal quand il ne reste plus que le bot."""
     vc = member.guild.voice_client
     if vc is None or before.channel != vc.channel or before.channel == after.channel:
         return
@@ -460,7 +423,6 @@ async def on_voice_state_update(member, before, after):
 
 @bot.event
 async def on_message(message: discord.Message):
-    """Repond au mot cle ecrit dans un salon texte, sans avoir besoin d'etre mentionne."""
     if message.author.bot or not message.guild:
         return
     if MESSAGES and REPONSES_TEXTE and MOT_ECRIT.search(message.content):
